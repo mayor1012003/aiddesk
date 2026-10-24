@@ -1,0 +1,63 @@
+appId: com.aiddesk.app
+productName: AidDesk
+copyright: Copyright © 2024 AidDesk Team
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - src/main/**/*
+  - dist/renderer/**/*
+  - node_modules/**/*
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,LICENSE,license,License}"
+  - "!**/node_modules/.cache/**"
+
+extraResources:
+  - from: assets/
+    to: assets/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  icon: assets/icon.ico
+  artifactName: "AidDesk-Setup-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AidDesk
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: assets/icon.icns
+  category: public.app-category.utilities
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # afterSign: scripts/notarize.js  # Uncomment for production notarization
+
+dmg:
+  artifactName: "AidDesk-${version}-${arch}.${ext}"
+
+linux:
+  target:
+    - AppImage
+  icon: assets/icon.png
+  category: RemoteAccess
+  artifactName: "AidDesk-${version}-${arch}.${ext}"
+
+asar: true

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+.env
+*.db
+device-id.json
+.DS_Store
+.project_instructions.md
