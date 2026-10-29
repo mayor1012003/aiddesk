@@ -1,0 +1,40 @@
+# Koyeb deployment configuration for AidDesk Signaling Server
+# Docs: https://www.koyeb.com/docs/reference/koyeb-yaml
+
+name: aiddesk-signaling
+
+services:
+  - name: signaling
+    type: web
+    git:
+      # Point to the signaling-server subfolder inside the repo
+      repository: github.com/mayor1012003/aiddesk
+      branch: main
+      build_command: "cd signaling-server && npm install"
+      run_command: "cd signaling-server && npm start"
+
+    # Koyeb injects PORT automatically — the server already reads process.env.PORT
+    ports:
+      - port: 8000
+        protocol: http
+
+    # Health check: Koyeb pings /healthz to confirm the server is alive
+    health_checks:
+      - path: /healthz
+        port: 8000
+        protocol: http
+        initial_delay_seconds: 5
+        period_seconds: 30
+
+    # Free tier resources
+    instance_type: free
+
+    # Single instance is enough for a signaling server
+    scaling:
+      min: 1
+      max: 1
+
+    # Environment variables (no secrets needed for the signaling server)
+    env:
+      - key: NODE_ENV
+        value: production
