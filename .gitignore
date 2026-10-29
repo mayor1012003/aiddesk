@@ -6,3 +6,6 @@ release/
 device-id.json
 .DS_Store
 .project_instructions.md
+
+# Cloudflare Wrangler local state
+.wrangler/

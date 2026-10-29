@@ -1,0 +1,15 @@
+{
+  "name": "aiddesk-signaling-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AidDesk WebRTC signaling server for Cloudflare Workers (free plan)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "login": "wrangler login",
+    "logs": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
