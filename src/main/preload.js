@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('aiddesk', {
   // ─── Signaling & WebRTC ──────────────────────────────────────────────
   getSignalingUrl: () => safeInvoke('signaling:getUrl'),
   getIceServers: () => safeInvoke('webrtc:getIceServers'),
+  getRtcConfig: () => safeInvoke('webrtc:getRtcConfig'),
 
   // ─── Screen Capture ──────────────────────────────────────────────────
   getScreenSources: () => safeInvoke('screen:getSources'),

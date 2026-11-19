@@ -29,6 +29,101 @@ const {
 // Pending connection requests (host-side interactive approval)
 const pendingRequests = new Map();
 
+// ─── ICE server config (STUN + short-lived TURN from the signaling server) ──
+
+const ICE_FETCH_TIMEOUT_MS = 6000;
+const ICE_REFRESH_MARGIN_MS = 60 * 60 * 1000; // refetch when <1h of credential life remains
+let iceCache = null; // { iceServers, turnEnabled, expiresAtMs }
+
+/** Static fallback: STUN_SERVERS / TURN_* env vars (previous behavior). */
+function envIceServers() {
+  const servers = [];
+  const stun = process.env.STUN_SERVERS || 'stun:stun.l.google.com:19302';
+  stun.split(',').filter((s) => s.trim()).forEach((s) => servers.push({ urls: s.trim() }));
+
+  const turn = process.env.TURN_SERVERS;
+  if (turn) {
+    turn.split(',').filter((t) => t.trim()).forEach((t) => {
+      servers.push({
+        urls: t.trim(),
+        username: process.env.TURN_USERNAME || '',
+        credential: process.env.TURN_CREDENTIAL || '',
+      });
+    });
+  }
+  return servers;
+}
+
+/** wss://host/path -> https://host/ice-servers (ws:// -> http://). */
+function iceServersEndpoint(signalingUrl) {
+  const u = new URL(signalingUrl);
+  u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+  u.pathname = '/ice-servers';
+  u.search = '';
+  return u;
+}
+
+async function fetchRemoteIceServers(signalingUrl, deviceId) {
+  const endpoint = iceServersEndpoint(signalingUrl);
+  if (deviceId) endpoint.searchParams.set('deviceId', deviceId);
+  const res = await fetch(endpoint, { signal: AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data.iceServers) || data.iceServers.length === 0) {
+    throw new Error('response has no iceServers');
+  }
+  return data;
+}
+
+/**
+ * Build the RTCPeerConnection config used by BOTH caller and callee.
+ * Order: signaling server /ice-servers (with TURN if configured) → env/STUN fallback.
+ * AIDDESK_FORCE_RELAY=1 sets iceTransportPolicy 'relay' so you can verify TURN works.
+ */
+async function getRtcConfig(signalingUrl, deviceId) {
+  const forceRelay = process.env.AIDDESK_FORCE_RELAY === '1';
+  const now = Date.now();
+
+  // Reuse cached TURN credentials while they have plenty of life left. STUN-only results
+  // are not cached, so a device that registers later can still pick up TURN.
+  if (!iceCache || !iceCache.turnEnabled || iceCache.expiresAtMs - now < ICE_REFRESH_MARGIN_MS) {
+    try {
+      const data = await fetchRemoteIceServers(signalingUrl, deviceId);
+      const extra = process.env.TURN_SERVERS ? envIceServers().filter((s) => !String(s.urls).startsWith('stun:')) : [];
+      iceCache = {
+        iceServers: [...data.iceServers, ...extra],
+        turnEnabled: Boolean(data.turnEnabled) || extra.length > 0,
+        expiresAtMs: data.expiresAt ? Date.parse(data.expiresAt) : now,
+        source: 'signaling-server',
+        reason: data.reason || null,
+      };
+      console.log(`[ICE] Loaded from signaling server (turnEnabled=${iceCache.turnEnabled}${data.reason ? `, reason=${data.reason}` : ''})`);
+    } catch (err) {
+      console.warn('[ICE] Could not fetch ICE servers from signaling server, using STUN fallback:', err.message);
+      const servers = envIceServers();
+      iceCache = {
+        iceServers: servers,
+        turnEnabled: servers.some((s) => String(s.urls).startsWith('turn')),
+        expiresAtMs: now,
+        source: 'fallback',
+        reason: err.message,
+      };
+    }
+  }
+
+  if (forceRelay && !iceCache.turnEnabled) {
+    console.warn('[ICE] AIDDESK_FORCE_RELAY=1 but no TURN server is available — connections will fail.');
+  }
+
+  return {
+    iceServers: iceCache.iceServers,
+    iceTransportPolicy: forceRelay ? 'relay' : 'all',
+    turnEnabled: iceCache.turnEnabled,
+    source: iceCache.source,
+    reason: iceCache.reason,
+  };
+}
+
 /**
  * Register all IPC handlers.
  * @param {object} ctx - Application context { mainWindow, db, deviceId, signalingUrl, inactivityTimeout }
@@ -43,23 +138,13 @@ function registerIpcHandlers(ctx) {
   // ─── Signaling & WebRTC Config ───────────────────────────────────────
   ipcMain.handle('signaling:getUrl', () => signalingUrl);
 
-  ipcMain.handle('webrtc:getIceServers', () => {
-    const servers = [];
-    const stun = process.env.STUN_SERVERS || 'stun:stun.l.google.com:19302';
-    stun.split(',').forEach((s) => servers.push({ urls: s.trim() }));
+  // Legacy channel: just the iceServers array.
+  ipcMain.handle('webrtc:getIceServers', async () => (await getRtcConfig(signalingUrl, deviceId)).iceServers);
+  // Full RTCPeerConnection config: { iceServers, iceTransportPolicy, turnEnabled, source }.
+  ipcMain.handle('webrtc:getRtcConfig', () => getRtcConfig(signalingUrl, deviceId));
 
-    const turn = process.env.TURN_SERVERS;
-    if (turn) {
-      turn.split(',').forEach((t) => {
-        servers.push({
-          urls: t.trim(),
-          username: process.env.TURN_USERNAME || '',
-          credential: process.env.TURN_CREDENTIAL || '',
-        });
-      });
-    }
-    return servers;
-  });
+  // Warm the cache at startup (no-op fallback if the server is unreachable).
+  getRtcConfig(signalingUrl, deviceId).catch(() => {});
 
   // ─── Screen Capture ──────────────────────────────────────────────────
   ipcMain.handle('screen:getSources', async () => getScreenSources());

@@ -17,9 +17,111 @@
 const DEVICE_ID_RE = /^\d{3}-\d{3}-\d{3}$/;
 const OPEN = 1;
 
+// ─── TURN / ICE servers ──────────────────────────────────────────────────────
+// Short-lived TURN credentials come from Cloudflare Realtime TURN. The long-lived
+// TURN key (TURN_KEY_ID + TURN_KEY_API_TOKEN) stays in Worker secrets and is never
+// sent to the app. Without the secrets (or if Cloudflare's API fails) we return
+// public STUN servers only, so the app keeps working exactly as before.
+const TURN_API = 'https://rtc.live.cloudflare.com/v1/turn/keys';
+const TURN_TTL_SECONDS = 86400; // credentials live 24h
+const TURN_REUSE_SECONDS = 43200; // reuse cached creds while ≥12h of life remain
+const STUN_FALLBACK = [
+  { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
+];
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Per-isolate cache so a burst of requests doesn't mint a new credential each time.
+let turnCache = null; // { iceServers, expiresAt (ms) }
+
+function iceJson(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store' },
+  });
+}
+
+/** Ask the hub whether deviceId is currently registered, retrying briefly to cover
+ *  the race where the app fetches ICE servers right after sending `register`. */
+async function isDeviceOnline(env, deviceId) {
+  const hub = env.SIGNALING_HUB.get(env.SIGNALING_HUB.idFromName('global'));
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await hub.fetch(`https://hub/online?deviceId=${encodeURIComponent(deviceId)}`);
+    if ((await res.json()).online) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+async function generateTurnIceServers(env) {
+  const now = Date.now();
+  if (turnCache && turnCache.expiresAt - now > TURN_REUSE_SECONDS * 1000) return turnCache;
+
+  const res = await fetch(`${TURN_API}/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ttl: TURN_TTL_SECONDS }),
+  });
+  if (!res.ok) throw new Error(`Cloudflare TURN API returned ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data.iceServers) || data.iceServers.length === 0) {
+    throw new Error('Cloudflare TURN API returned no iceServers');
+  }
+  // Drop port-53 URLs: browsers/Chromium block them and they only cause timeouts.
+  const iceServers = data.iceServers
+    .map((s) => {
+      const urls = (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u));
+      return { ...s, urls };
+    })
+    .filter((s) => s.urls.length > 0);
+
+  turnCache = { iceServers, expiresAt: now + TURN_TTL_SECONDS * 1000 };
+  return turnCache;
+}
+
+async function handleIceServers(request, env, url) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (request.method !== 'GET') return iceJson({ error: 'Method not allowed' }, 405);
+
+  const stunOnly = (reason) =>
+    iceJson({ turnEnabled: false, reason, ttl: null, expiresAt: null, iceServers: STUN_FALLBACK });
+
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return stunOnly('turn-not-configured');
+
+  // Abuse protection: only hand TURN credentials to a device that is currently
+  // registered on this signaling server (i.e. a running AidDesk app).
+  const deviceId = url.searchParams.get('deviceId') || '';
+  if (!DEVICE_ID_RE.test(deviceId) || !(await isDeviceOnline(env, deviceId))) {
+    return stunOnly('device-not-registered');
+  }
+
+  try {
+    const { iceServers, expiresAt } = await generateTurnIceServers(env);
+    return iceJson({
+      turnEnabled: true,
+      ttl: Math.floor((expiresAt - Date.now()) / 1000),
+      expiresAt: new Date(expiresAt).toISOString(),
+      iceServers,
+    });
+  } catch (err) {
+    console.error('[ice-servers] TURN credential generation failed:', err.message);
+    return stunOnly('turn-api-error');
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/ice-servers') {
+      return handleIceServers(request, env, url);
+    }
 
     if (request.headers.get('Upgrade') === 'websocket') {
       const hub = env.SIGNALING_HUB.get(env.SIGNALING_HUB.idFromName('global'));
@@ -52,6 +154,10 @@ export class SignalingHub {
 
     if (url.pathname === '/stats') {
       return Response.json({ connectedDevices: this.registeredSockets().length });
+    }
+
+    if (url.pathname === '/online') {
+      return Response.json({ online: Boolean(this.findDevice(url.searchParams.get('deviceId'))) });
     }
 
     if (request.headers.get('Upgrade') !== 'websocket') {

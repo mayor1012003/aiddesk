@@ -25,6 +25,27 @@ const VIEWS = {
   SETTINGS: 'settings',
 };
 
+const DEFAULT_RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+/**
+ * RTCPeerConnection config for both caller and callee: STUN + short-lived TURN
+ * from the signaling server (fetched in the main process), with STUN fallback.
+ */
+async function getRtcConfiguration() {
+  try {
+    const cfg = await window.aiddesk?.getRtcConfig?.();
+    if (cfg?.iceServers?.length) {
+      console.log(`[WebRTC] ICE config: turnEnabled=${cfg.turnEnabled}, policy=${cfg.iceTransportPolicy}, source=${cfg.source}`);
+      return { iceServers: cfg.iceServers, iceTransportPolicy: cfg.iceTransportPolicy || 'all' };
+    }
+    const iceServers = await window.aiddesk?.getIceServers?.();
+    if (iceServers?.length) return { iceServers };
+  } catch (err) {
+    console.warn('[WebRTC] Failed to load ICE config, using STUN fallback:', err);
+  }
+  return DEFAULT_RTC_CONFIG;
+}
+
 export default function App() {
   const [view, setView] = useState(VIEWS.DASHBOARD);
   const [deviceId, setDeviceId] = useState('');
@@ -163,8 +184,7 @@ export default function App() {
   // ─── Accept an Incoming Connection (Host Side) ──────────────────────
 
   const acceptIncomingConnection = useCallback(async (msg) => {
-    const iceServers = await window.aiddesk?.getIceServers?.() || [];
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection(await getRtcConfiguration());
     peerConnectionRef.current = pc;
 
     // Get screen stream
@@ -248,8 +268,7 @@ export default function App() {
       }
 
       // Create peer connection
-      const iceServers = await window.aiddesk?.getIceServers?.() || [];
-      const pc = new RTCPeerConnection({ iceServers });
+      const pc = new RTCPeerConnection(await getRtcConfiguration());
       peerConnectionRef.current = pc;
 
       // Handle incoming stream (the remote screen)
