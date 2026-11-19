@@ -111,7 +111,7 @@ Then set `SIGNALING_SERVER_URL=wss://signal.yourdomain.com` in the AidDesk app.
 In the AidDesk app's `.env` file:
 
 ```env
-SIGNALING_SERVER_URL=ws://your-server-ip:9090
+SIGNALING_SERVER_URL=ws://your-server-ip:9090   # overrides the default wss://aiddesk-signaling.mayor1012003.workers.dev
 # Or with TLS:
 SIGNALING_SERVER_URL=wss://signal.yourdomain.com
 ```

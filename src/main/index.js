@@ -14,8 +14,10 @@ const { registerIpcHandlers } = require('./ipcHandlers');
 // Keep a global reference to prevent garbage collection
 let mainWindow = null;
 
-// Environment config with defaults
-const SIGNALING_URL = process.env.SIGNALING_SERVER_URL || 'ws://localhost:9090';
+// Environment config with defaults.
+// Default: live Cloudflare Workers signaling server. Override with SIGNALING_SERVER_URL
+// (e.g. ws://localhost:9090 when running ./signaling-server locally).
+const SIGNALING_URL = process.env.SIGNALING_SERVER_URL || 'wss://aiddesk-signaling.mayor1012003.workers.dev';
 const INACTIVITY_TIMEOUT = parseInt(process.env.INACTIVITY_TIMEOUT || '10', 10);
 
 function createMainWindow() {

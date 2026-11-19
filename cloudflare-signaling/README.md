@@ -1,5 +1,9 @@
 # AidDesk Signaling Server — Cloudflare Workers (free)
 
+> **Live:** `https://aiddesk-signaling.mayor1012003.workers.dev`. This is the AidDesk app's **default** signaling server
+> (`wss://aiddesk-signaling.mayor1012003.workers.dev`, set in `src/main/index.js`).
+> Health check: <https://aiddesk-signaling.mayor1012003.workers.dev/healthz>
+
 Always-on WebSocket signaling server for AidDesk, running on Cloudflare's free
 Workers plan with Durable Objects. No credit card, no sleeping, no server to
 start or stop. It uses the same protocol as `../signaling-server` (Node), so the
@@ -34,7 +38,10 @@ browser. You should see:
 
 ## Point AidDesk at it
 
-Use `wss://` (secure WebSocket) with the same host:
+Nothing to do for the live deployment: the app already defaults to
+`wss://aiddesk-signaling.mayor1012003.workers.dev`.
+
+If you deploy to a different subdomain, override the default with `wss://` and your host:
 
 ```bash
 SIGNALING_SERVER_URL=wss://aiddesk-signaling.<your-subdomain>.workers.dev npm run dev

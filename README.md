@@ -39,29 +39,35 @@
 
 ```bash
 cd aiddesk
-# Rename the electron package.json (if not already done)
-cp electron-package.json package.json
 npm install
 ```
 
 ### 2. Rebuild Native Modules
 
-robotjs and better-sqlite3 require native compilation for Electron:
+robotjs (installed as [`@jitsi/robotjs`](https://www.npmjs.com/package/@jitsi/robotjs) through an npm alias, with prebuilt binaries for Apple silicon and Intel) and better-sqlite3 need to be rebuilt for Electron:
 
 ```bash
 npm run rebuild
 ```
 
-### 3. Start the Signaling Server
+### 3. Signaling Server (already live, nothing to start)
 
-In a separate terminal:
+By default the app connects to the live Cloudflare Workers signaling server:
+
+```
+wss://aiddesk-signaling.mayor1012003.workers.dev
+```
+
+To test against the local Node server instead, start it in a separate terminal
+and point the app at it with the `SIGNALING_SERVER_URL` environment variable:
 
 ```bash
 cd signaling-server
-# Rename signaling-package.json (if not already done)
-cp signaling-package.json package.json
 npm install
-node server.js
+node server.js                     # listens on ws://localhost:9090
+
+# in the app terminal:
+SIGNALING_SERVER_URL=ws://localhost:9090 npm run dev
 ```
 
 ### 4. Run in Development
@@ -91,13 +97,17 @@ Built packages will be in the `release/` directory.
 
 ```
 aiddesk/
-├── electron-package.json      # Electron app dependencies & scripts
+├── package.json               # Electron app dependencies & scripts
 ├── electron-builder.yml       # Packaging configuration
 ├── webpack.renderer.config.js # React/renderer bundler config
 ├── .env.example               # Environment configuration template
-├── signaling-server/          # Self-hosted WebSocket signaling server
+├── cloudflare-signaling/      # Live signaling server (Cloudflare Workers), the app default
+│   ├── src/
+│   ├── wrangler.toml
+│   └── README.md
+├── signaling-server/          # Alternative self-hosted Node.js signaling server
 │   ├── server.js
-│   ├── signaling-package.json
+│   ├── package.json
 │   └── DEPLOY.md              # Deployment guide
 ├── public/
 │   └── index.html             # Renderer HTML template
@@ -127,24 +137,24 @@ aiddesk/
 │           ├── Settings.jsx           # Security & preferences
 │           ├── ConnectionRequest.jsx  # Incoming approval dialog
 │           └── StatusBar.jsx          # Connection indicator
-└── assets/                    # Icons (placeholder)
+└── assets/                    # Icons: icon.svg (source), icon.png, icon.icns (mac), icon.ico (win)
 ```
 
 ## Configuring the Signaling Server URL
 
-Copy `.env.example` to `.env` in the project root:
+**Default:** `wss://aiddesk-signaling.mayor1012003.workers.dev`, the live Cloudflare Worker in
+`cloudflare-signaling/`. No configuration needed; packaged builds use it automatically.
 
-```env
-SIGNALING_SERVER_URL=ws://your-server-ip:9090
+To use a different server, set the `SIGNALING_SERVER_URL` environment variable when
+launching the app (it overrides the default):
+
+```bash
+SIGNALING_SERVER_URL=ws://your-server-ip:9090 npm run dev     # self-hosted Node server
+SIGNALING_SERVER_URL=wss://signal.yourdomain.com npm run dev  # self-hosted with TLS
 ```
 
-For TLS (recommended for production):
-
-```env
-SIGNALING_SERVER_URL=wss://signal.yourdomain.com
-```
-
-See `signaling-server/DEPLOY.md` for full deployment instructions.
+See `cloudflare-signaling/README.md` (Cloudflare) or `signaling-server/DEPLOY.md`
+(Node) for deployment instructions.
 
 ## Security Architecture
 
