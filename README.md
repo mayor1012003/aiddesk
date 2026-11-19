@@ -70,6 +70,15 @@ node server.js                     # listens on ws://localhost:9090
 SIGNALING_SERVER_URL=ws://localhost:9090 npm run dev
 ```
 
+**How the app uses it:** every AidDesk instance connects and registers its Device ID
+as soon as it opens, so another PC can connect to it right away. Nobody has to click
+anything on the host. The connection reconnects on its own with backoff after network
+changes, sleep/wake or a server restart, and re-registers each time. A `ping` heartbeat
+every 30 s detects dead connections. The status bar and the Dashboard show the live
+state: **Online**, **Connecting**, **Offline — reconnecting** or **Device ID in use
+elsewhere**. If another window or PC registers the same Device ID, the older one stops
+reconnecting. Outgoing connections reuse this same socket.
+
 ### 4. Run in Development
 
 ```bash

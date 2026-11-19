@@ -95,7 +95,7 @@ wss.on('connection', (ws, req) => {
             type: 'error',
             message: 'Another session registered with your Device ID',
           }));
-          old.close();
+          old.close(4000, 'Replaced by newer session');
         }
 
         clients.set(deviceId, ws);
@@ -161,9 +161,16 @@ wss.on('connection', (ws, req) => {
           target.send(JSON.stringify({
             type: 'disconnect',
             from: msg.from,
+            reason: msg.reason,
           }));
         }
         console.log(`[Disconnect] ${msg.from} disconnected from ${msg.target}`);
+        break;
+      }
+
+      // ─── Heartbeat: keeps the client's connection check alive ────────────
+      case 'ping': {
+        ws.send(JSON.stringify({ type: 'pong' }));
         break;
       }
 
@@ -176,7 +183,9 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (registeredId) {
+    // Only drop the mapping if it still points at this socket (a newer session
+    // with the same Device ID may have replaced it).
+    if (registeredId && clients.get(registeredId) === ws) {
       clients.delete(registeredId);
       console.log(`[Offline] Device ${registeredId} (${clients.size} remaining online)`);
     }

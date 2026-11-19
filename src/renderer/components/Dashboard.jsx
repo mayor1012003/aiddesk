@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 
-export default function Dashboard({ deviceId, connectionStatus, onConnect, onDisconnect }) {
+export default function Dashboard({ deviceId, connectionStatus, signalingStatus, notice, onConnect, onDisconnect }) {
   const [targetId, setTargetId] = useState('');
   const [error, setError] = useState('');
 
@@ -37,6 +37,12 @@ export default function Dashboard({ deviceId, connectionStatus, onConnect, onDis
 
   const isConnected = connectionStatus === 'connected';
   const isConnecting = connectionStatus === 'connecting';
+  const reachability = {
+    online: { color: 'var(--success)', text: '● Online — others can connect to this device now' },
+    connecting: { color: 'var(--warning)', text: '● Connecting to the signaling server…' },
+    offline: { color: 'var(--danger)', text: '● Offline — retrying automatically' },
+    replaced: { color: 'var(--danger)', text: '● This Device ID is active in another AidDesk window' },
+  }[signalingStatus] ?? { color: 'var(--text-muted)', text: '' };
 
   return (
     <div className="dashboard">
@@ -45,6 +51,9 @@ export default function Dashboard({ deviceId, connectionStatus, onConnect, onDis
         <div className="device-id-label">Your Device ID</div>
         <div className="device-id-value">{deviceId || '---'}</div>
         <div className="device-id-hint">Share this ID so others can connect to your device</div>
+        {reachability.text && (
+          <div style={{ fontSize: 12, marginTop: 8, color: reachability.color }}>{reachability.text}</div>
+        )}
       </div>
 
       {/* Connect to Remote Device */}
@@ -77,9 +86,9 @@ export default function Dashboard({ deviceId, connectionStatus, onConnect, onDis
             </button>
           )}
         </div>
-        {error && (
+        {(error || notice) && (
           <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 10 }}>
-            {error}
+            {error || notice}
           </div>
         )}
       </div>

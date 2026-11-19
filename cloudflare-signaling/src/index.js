@@ -147,6 +147,14 @@ export default {
 export class SignalingHub {
   constructor(state) {
     this.state = state;
+    // Heartbeat: answer the app's {"type":"ping"} without waking the hibernated DO.
+    try {
+      state.setWebSocketAutoResponse(
+        new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'),
+      );
+    } catch {
+      /* older runtime: handled by the 'ping' case below */
+    }
   }
 
   async fetch(request) {
@@ -238,9 +246,12 @@ export class SignalingHub {
 
       case 'disconnect': {
         const target = this.findDevice(msg.target);
-        if (target) this.send(target, { type: 'disconnect', from: msg.from });
+        if (target) this.send(target, { type: 'disconnect', from: msg.from, reason: msg.reason });
         return;
       }
+
+      case 'ping':
+        return this.send(ws, { type: 'pong' });
 
       default:
         return this.send(ws, { type: 'error', message: `Unknown message type: ${msg.type}` });

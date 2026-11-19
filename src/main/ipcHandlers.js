@@ -143,8 +143,8 @@ function registerIpcHandlers(ctx) {
   // Full RTCPeerConnection config: { iceServers, iceTransportPolicy, turnEnabled, source }.
   ipcMain.handle('webrtc:getRtcConfig', () => getRtcConfig(signalingUrl, deviceId));
 
-  // Warm the cache at startup (no-op fallback if the server is unreachable).
-  getRtcConfig(signalingUrl, deviceId).catch(() => {});
+  // No startup warm-up: /ice-servers only grants TURN to a *registered* device, and the
+  // renderer registers first, then requests the config when a session starts.
 
   // ─── Screen Capture ──────────────────────────────────────────────────
   ipcMain.handle('screen:getSources', async () => getScreenSources());

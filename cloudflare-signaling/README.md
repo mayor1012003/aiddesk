@@ -9,6 +9,14 @@ Workers plan with Durable Objects. No credit card, no sleeping, no server to
 start or stop. It uses the same protocol as `../signaling-server` (Node), so the
 desktop app works with either one.
 
+Protocol messages: `register` → `registered`, then `offer` / `answer` / `ice-candidate` /
+`disconnect` relayed to `target`. `disconnect` may carry a `reason`: `rejected`, `busy` or
+`host-error`. The app sends `{"type":"ping"}` every 30 s as a heartbeat. The Worker answers
+`{"type":"pong"}` through `setWebSocketAutoResponse`, so heartbeats don't wake the
+hibernated Durable Object. **Redeploy (`npx wrangler deploy`) to get these.** Older
+deployments still work with the new app, which ignores their "Unknown message type: ping"
+reply.
+
 ## Deploy (from your Mac)
 
 ```bash
@@ -107,8 +115,8 @@ TURN key lives only in Worker secrets and never ships in the app.
    <https://aiddesk-signaling.mayor1012003.workers.dev/ice-servers>. Without a
    registered `deviceId` you'll see `"reason": "device-not-registered"`. That means
    the secrets **are** set: the reason would be `turn-not-configured` if they weren't.
-   With the AidDesk app running, the app's main-process log shows
-   `[ICE] Loaded from signaling server (turnEnabled=true)`.
+   When a session starts (the app registers first, then fetches ICE servers), the
+   app's main-process log shows `[ICE] Loaded from signaling server (turnEnabled=true)`.
 5. Optional, to prove the relay works: start the app with
    `AIDDESK_FORCE_RELAY=1 npm run dev` on one side. All traffic is then forced through TURN
    (`iceTransportPolicy: 'relay'`), so a successful connection means TURN works.
