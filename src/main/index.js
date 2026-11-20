@@ -10,6 +10,7 @@ const path = require('path');
 const { initDatabase } = require('./database');
 const { getOrCreateDeviceId } = require('./deviceId');
 const { registerIpcHandlers } = require('./ipcHandlers');
+const background = require('./background');
 
 // Keep a global reference to prevent garbage collection
 let mainWindow = null;
@@ -36,6 +37,9 @@ function createMainWindow() {
       nodeIntegration: false,       // Security: no Node in renderer
       sandbox: false,               // Needed for preload access
       webSecurity: true,
+      // Keep timers (signaling heartbeat/reconnect) running at full speed while the
+      // window is hidden in the tray, so the device stays reachable.
+      backgroundThrottling: false,
     },
     show: false, // Show after ready-to-show to avoid white flash
   });
@@ -50,12 +54,27 @@ function createMainWindow() {
     });
   });
 
+  const startHidden = background.wasLaunchedHidden();
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    if (startHidden) {
+      if (process.platform === 'darwin') app.dock?.hide?.();
+      console.log('[AidDesk] Started at login — running in the tray');
+    } else {
+      mainWindow.show();
+    }
+  });
+
+  // Closing the window keeps AidDesk running in the tray / menu bar so this device
+  // stays reachable. Real quit: tray "Quit AidDesk", Cmd+Q, or an app update.
+  mainWindow.on('close', (event) => {
+    if (app.isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+    if (process.platform === 'darwin') app.dock?.hide?.();
   });
 
   // Open DevTools in development
-  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+  if ((process.env.NODE_ENV === 'development' || !app.isPackaged) && !startHidden) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -86,25 +105,37 @@ async function bootstrap() {
     inactivityTimeout: INACTIVITY_TIMEOUT,
   });
 
+  // Tray / menu bar icon + start-at-login
+  background.initBackground({ getWindow: () => mainWindow, deviceId });
+
   console.log('[AidDesk] Application ready');
 }
 
 // ─── App Lifecycle ──────────────────────────────────────────────────────────
 
-app.whenReady().then(bootstrap);
+app.isQuitting = false;
+
+// Single instance: a second launch (e.g. double-clicking the app again) just shows
+// the already-running window instead of registering the same Device ID twice.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => background.showWindow());
+  app.whenReady().then(bootstrap);
+}
+
+app.on('before-quit', () => {
+  app.isQuitting = true; // tray Quit, Cmd+Q, auto-updater, OS shutdown
+});
 
 app.on('window-all-closed', () => {
-  // On macOS, apps stay in dock until explicitly quit
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // The window is only hidden on close, so this fires only while quitting.
+  if (app.isQuitting) app.quit();
 });
 
 app.on('activate', () => {
-  // macOS: re-create window when dock icon clicked and no windows open
-  if (BrowserWindow.getAllWindows().length === 0) {
-    bootstrap();
-  }
+  // macOS: clicking the Dock / Launchpad icon shows the hidden window
+  if (mainWindow) background.showWindow();
 });
 
 // Security: prevent new window creation from renderer

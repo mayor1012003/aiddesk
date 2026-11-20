@@ -23,6 +23,39 @@
 - 📜 **Session Logging** — Full history with timestamps and duration
 - 🎙️ **Quality Control** — Auto/High/Medium/Low quality presets
 
+## For your team (no Node.js or npm needed)
+
+1. **Download** the installer from this repo's **Releases** page
+   (<https://github.com/mayor1012003/aiddesk/releases/latest>):
+   - Windows: `AidDesk-Setup-<version>-x64.exe`
+   - Mac with Apple silicon (M1–M4): `AidDesk-<version>-arm64.dmg`
+   - Intel Mac: `AidDesk-<version>-x64.dmg` (when it's attached)
+2. **Install and allow it on first run.** The builds aren't code-signed yet, so:
+   - **Windows:** if SmartScreen says "Windows protected your PC", click **More info → Run anyway**.
+   - **macOS:** drag AidDesk into Applications, then run this once in Terminal:
+     `xattr -cr /Applications/AidDesk.app`. Or try to open it, then go to
+     System Settings → Privacy & Security → **Open Anyway**.
+   - **macOS permissions:** in System Settings → Privacy & Security, turn on
+     **Screen Recording** and **Accessibility** for AidDesk. Then quit it from the
+     menu bar icon and reopen it.
+3. **It stays running.** AidDesk starts automatically when you log in and lives in the
+   system tray (Windows) or the menu bar (macOS). Closing the window only hides it.
+   To really quit, use the tray icon → **Quit AidDesk**. You can turn off "Start AidDesk
+   when I log in" in Settings or in the tray menu.
+4. **Reachability.** A computer can be reached whenever it's **powered on, logged in and
+   connected to the internet**. Its status reads *Online — ready for connections*. The
+   signaling server runs 24/7 in the cloud, but a PC that is off, asleep or logged out
+   can't be reached.
+5. **Connecting without someone at the other PC:** on that PC, set an **Unattended Access
+   Password** in Settings (plus 2FA if you like). To connect to it, enter its Device ID
+   and that password (and the 2FA code) on the Dashboard. Leave the password empty if you
+   want the person there to click **Accept**. Five wrong attempts lock the caller out for
+   60 seconds.
+
+**New release:** bump `version` in `package.json`, then `git tag v1.2.3 && git push origin v1.2.3`.
+GitHub Actions (`.github/workflows/build.yml`) builds the Windows and macOS installers
+and attaches them to the release.
+
 ## Prerequisites
 
 | Requirement | Version |

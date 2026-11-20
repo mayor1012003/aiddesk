@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { getScreenSources, buildCaptureConstraints, getScreenDimensions } = require('./screenCapture');
 const { handleInputEvent, setInputEnabled, isInputEnabled } = require('./inputControl');
 const { AuthManager } = require('./auth');
+const background = require('./background');
 const {
   prepareFileForSending,
   readNextChunk,
@@ -173,6 +174,32 @@ function registerIpcHandlers(ctx) {
   ipcMain.handle('auth:addToWhitelist', (_, did, notes) => authManager.addToWhitelist(did, notes));
   ipcMain.handle('auth:removeFromWhitelist', (_, did) => authManager.removeFromWhitelist(did));
   ipcMain.handle('auth:getWhitelist', () => authManager.getWhitelist());
+
+  // Unattended access: a caller that supplies this device's password (and TOTP code if
+  // 2FA is on) is let in without anyone clicking Accept. Lockout after repeated failures.
+  ipcMain.handle('auth:verifyUnattended', async (_, remoteDeviceId, password, totp) => {
+    if (typeof remoteDeviceId !== 'string' || !remoteDeviceId) return { ok: false, reason: 'bad-request' };
+    if (!authManager.hasPassword()) return { ok: false, reason: 'no-password-set' };
+    const lock = authManager.checkLockout(remoteDeviceId);
+    if (lock.locked) return { ok: false, reason: 'locked', remainingSeconds: lock.remainingSeconds };
+    let ok = false;
+    try {
+      ok = Boolean(password) && (await authManager.verifyPassword(String(password)));
+      if (ok && authManager.is2FAEnabled()) ok = authManager.verifyTOTP(String(totp || ''));
+    } catch (err) {
+      console.error('[Auth] Unattended verification error:', err.message);
+      ok = false;
+    }
+    authManager.recordAttempt(remoteDeviceId, ok);
+    return ok ? { ok: true } : { ok: false, reason: 'bad-password' };
+  });
+
+  // ─── Background / Tray ───────────────────────────────────────────────
+  ipcMain.handle('app:getStartAtLogin', () => ({ enabled: background.getStartAtLogin(), applied: require('electron').app.isPackaged }));
+  ipcMain.handle('app:setStartAtLogin', (_, enabled) => background.setStartAtLogin(enabled));
+  ipcMain.handle('app:setSignalingStatus', (_, status) => background.setSignalingStatus(status));
+  ipcMain.handle('app:notifyIncomingRequest', (_, remoteDeviceId) => background.notifyIncomingRequest(String(remoteDeviceId || 'unknown')));
+  ipcMain.handle('app:showWindow', () => background.showWindow());
 
   // ─── Connection Approval (Interactive) ───────────────────────────────
   ipcMain.handle('connection:request-approval', (_, remoteDeviceId) => {

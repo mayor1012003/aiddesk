@@ -29,6 +29,7 @@ export default function Settings({ deviceId }) {
 
   // Permission toggles
   const [inputEnabled, setInputEnabled] = useState(true);
+  const [startAtLogin, setStartAtLogin] = useState({ enabled: true, applied: true });
 
   // Load initial state
   useEffect(() => {
@@ -37,6 +38,8 @@ export default function Settings({ deviceId }) {
       setIs2FAEnabled(await window.aiddesk?.is2FAEnabled?.() ?? false);
       setWhitelist(await window.aiddesk?.getWhitelist?.() ?? []);
       setInputEnabled(await window.aiddesk?.getInputEnabled?.() ?? true);
+      const login = await window.aiddesk?.getStartAtLogin?.().catch?.(() => null);
+      if (login) setStartAtLogin(login);
     })();
   }, []);
 
@@ -118,6 +121,12 @@ export default function Settings({ deviceId }) {
     setInputEnabled(val);
   };
 
+  const handleToggleStartAtLogin = async (e) => {
+    const enabled = e.target.checked;
+    const result = await window.aiddesk?.setStartAtLogin?.(enabled).catch?.(() => null);
+    setStartAtLogin(result ?? { enabled, applied: false });
+  };
+
   const formatInput = (value) => {
     const digits = value.replace(/\D/g, '').slice(0, 9);
     const parts = [];
@@ -143,6 +152,20 @@ export default function Settings({ deviceId }) {
           <span style={{ fontFamily: 'monospace', color: 'var(--accent)', fontSize: 16 }}>
             {deviceId ?? '---'}
           </span>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-label">Start AidDesk when I log in</div>
+            <div className="settings-desc">
+              Starts hidden in the tray / menu bar so teammates can reach this computer whenever it's on.
+              Closing the window keeps AidDesk running — quit from the tray icon.
+              {!startAtLogin.applied && ' (Takes effect in the installed app, not in npm run dev.)'}
+            </div>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={startAtLogin.enabled} onChange={handleToggleStartAtLogin} />
+            <span className="toggle-slider" />
+          </label>
         </div>
       </div>
 

@@ -145,7 +145,10 @@ export default function App() {
       }
       const client = getSignalingClient({ url, deviceId });
       signalingRef.current = client;
-      unsubscribers.push(client.onStatus(setSignalingStatus));
+      unsubscribers.push(client.onStatus((status) => {
+        setSignalingStatus(status);
+        window.aiddesk?.setSignalingStatus?.(status)?.catch?.(() => {}); // tray / menu bar status
+      }));
       unsubscribers.push(client.onMessage((msg) => {
         Promise.resolve(signalingHandlerRef.current?.(msg)).catch((err) => {
           console.error('[Signaling] Error handling message:', err);
@@ -227,6 +230,31 @@ export default function App() {
         // Keep only candidates that already arrived from this caller
         pendingCandidatesRef.current = pendingCandidatesRef.current.filter((c) => c.from === msg.from);
 
+        // Unattended access: the caller supplied this device's password (+ 2FA code).
+        // Carried top-level (`auth`) and inside the sdp object, so it also works through
+        // signaling servers that don't relay `auth` yet.
+        const auth = msg.auth || msg.sdp?.auth;
+        if (auth?.password) {
+          const result = await Promise.resolve(
+            window.aiddesk?.verifyUnattended?.(msg.from, auth.password, auth.totp),
+          ).catch(() => null);
+          if (pendingOfferRef.current !== pending) return; // cancelled meanwhile
+          if (result?.ok) {
+            console.log('[Auth] Unattended access granted to', msg.from);
+            pendingOfferRef.current = null;
+            await acceptIncomingConnection(msg);
+            return;
+          }
+          if (result && result.reason !== 'no-password-set') {
+            console.warn('[Auth] Unattended access denied for', msg.from, result.reason);
+            pendingOfferRef.current = null;
+            pendingCandidatesRef.current = [];
+            sendSignal({ type: 'disconnect', target: msg.from, reason: result.reason === 'locked' ? 'locked' : 'bad-password' });
+            return;
+          }
+          // No password configured here (or check failed): fall back to asking the user.
+        }
+
         // Check ACL whitelist
         const whitelisted = await Promise.resolve(window.aiddesk?.isWhitelisted?.(msg.from)).catch(() => false);
         if (pendingOfferRef.current !== pending) return; // cancelled meanwhile
@@ -235,8 +263,10 @@ export default function App() {
           pendingOfferRef.current = null;
           await acceptIncomingConnection(msg);
         } else {
-          // Show interactive approval dialog; handleConnectionResponse continues from here
+          // Show interactive approval dialog; handleConnectionResponse continues from here.
+          // If AidDesk is hidden in the tray, bring it forward + native notification.
           setConnectionRequest({ requestId, remoteDeviceId: msg.from });
+          window.aiddesk?.notifyIncomingRequest?.(msg.from)?.catch?.(() => {});
         }
         break;
       }
@@ -282,6 +312,8 @@ export default function App() {
         if (msg.reason === 'rejected') setSessionNotice(`${remoteId} declined the connection.`);
         else if (msg.reason === 'busy') setSessionNotice(`${remoteId} is busy in another session.`);
         else if (msg.reason === 'host-error') setSessionNotice(`${remoteId} could not start screen sharing.`);
+        else if (msg.reason === 'bad-password') setSessionNotice(`Wrong unattended password or 2FA code for ${remoteId}.`);
+        else if (msg.reason === 'locked') setSessionNotice(`Too many failed attempts on ${remoteId} — wait a minute and try again.`);
         endSession({ notifyRemote: false });
         break;
       }
@@ -327,7 +359,7 @@ export default function App() {
 
       // Apply the offer first so our screen track goes into the caller's offered
       // video transceiver (adding it before would create an un-negotiated m-line).
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: msg.sdp.type, sdp: msg.sdp.sdp }));
       await flushPendingCandidates(pc, remoteId);
 
       // Get screen stream
@@ -380,7 +412,7 @@ export default function App() {
 
   // ─── Connect to a Remote Device (Client Side) ───────────────────────
 
-  const connectToDevice = async (rawTargetId) => {
+  const connectToDevice = async (rawTargetId, { password, totp } = {}) => {
     const targetDeviceId = (rawTargetId || '').trim();
     if (!targetDeviceId || peerConnectionRef.current || connectionStatusRef.current !== 'disconnected') return;
     if (targetDeviceId === deviceIdRef.current) {
@@ -435,7 +467,9 @@ export default function App() {
       await pc.setLocalDescription(offer);
 
       const requestId = `${deviceIdRef.current}-${Date.now()}`;
-      if (!sendSignal({ type: 'offer', sdp: offer, target: targetDeviceId, requestId })) {
+      const auth = password ? { password, totp: totp || undefined } : undefined;
+      const sdp = { type: offer.type, sdp: offer.sdp, ...(auth ? { auth } : {}) };
+      if (!sendSignal({ type: 'offer', sdp, target: targetDeviceId, requestId, auth })) {
         throw new Error('Lost connection to the signaling server');
       }
 
@@ -625,7 +659,7 @@ export default function App() {
 
   const connectToDeviceRef = useRef(null);
   connectToDeviceRef.current = connectToDevice;
-  const handleConnect = useCallback((targetId) => connectToDeviceRef.current(targetId), []);
+  const handleConnect = useCallback((targetId, options) => connectToDeviceRef.current(targetId, options), []);
 
   // ─── Render ─────────────────────────────────────────────────────────
 

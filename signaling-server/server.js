@@ -123,6 +123,7 @@ wss.on('connection', (ws, req) => {
           sdp: msg.sdp,
           from: msg.from,
           requestId: msg.requestId,
+          auth: msg.auth,
         }));
         break;
       }

@@ -1,0 +1,104 @@
+name: Build installers
+
+# Push a tag like v1.0.1 to build Windows + macOS installers and publish them on a
+# GitHub Release. "Run workflow" (manual) builds and uploads artifacts only.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            builder_args: --win nsis --x64
+            artifact_glob: release/*.exe
+          - name: macos-arm64
+            os: macos-latest          # Apple silicon
+            builder_args: --mac dmg --arm64
+            artifact_glob: release/*.dmg
+          - name: macos-x64
+            os: macos-15-intel        # Intel runner (macos-13 has been retired)
+            builder_args: --mac dmg --x64
+            artifact_glob: release/*.dmg
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # unsigned builds: don't look for a certificate
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+      npm_config_fund: 'false'
+      npm_config_audit: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5   # node-gyp fallback for native modules
+        with:
+          python-version: '3.11'
+
+      # No lockfile is committed, so `npm ci` isn't possible. postinstall runs
+      # `electron-builder install-app-deps`, which rebuilds robotjs / better-sqlite3 /
+      # argon2 for Electron on this runner's OS + arch.
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Package with electron-builder
+        run: npx electron-builder ${{ matrix.builder_args }} --publish never
+
+      - name: List output
+        shell: bash
+        run: ls -la release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AidDesk-${{ matrix.name }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    # Publish whatever built successfully (e.g. still release Windows + Apple silicon
+    # if the Intel Mac job fails).
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          pattern: AidDesk-*
+          merge-multiple: true
+
+      - name: List installers
+        run: ls -la dist-artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist-artifacts/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            ## Install AidDesk
+            - **Windows:** `AidDesk-Setup-*-x64.exe`. SmartScreen may warn about an unknown publisher: click **More info → Run anyway**.
+            - **Mac with Apple silicon (M1/M2/M3/M4):** `AidDesk-*-arm64.dmg`
+            - **Intel Mac:** `AidDesk-*-x64.dmg` (if it's attached)
+            - On macOS, drag AidDesk to Applications, then run `xattr -cr /Applications/AidDesk.app` in Terminal (or use System Settings → Privacy & Security → **Open Anyway**). Then grant **Screen Recording** and **Accessibility** to AidDesk.
+
+            AidDesk starts at login and runs in the tray / menu bar. Builds are unsigned.

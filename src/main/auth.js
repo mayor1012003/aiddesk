@@ -194,11 +194,12 @@ class AuthManager {
    * @returns {{ locked: boolean, remainingSeconds: number }}
    */
   checkLockout(remoteDeviceId) {
-    const cutoff = new Date(Date.now() - LOCKOUT_DURATION_MS).toISOString();
+    // attempted_at is SQLite datetime('now') — UTC "YYYY-MM-DD HH:MM:SS" — so compare in SQL
+    // (an ISO string cutoff never matched, which meant the lockout never triggered).
     const recent = this.db.prepare(
       `SELECT COUNT(*) as cnt FROM login_attempts
-       WHERE remote_device_id = ? AND attempted_at > ? AND success = 0`
-    ).get(remoteDeviceId, cutoff);
+       WHERE remote_device_id = ? AND attempted_at > datetime('now', ?) AND success = 0`
+    ).get(remoteDeviceId, `-${Math.round(LOCKOUT_DURATION_MS / 1000)} seconds`);
 
     if (recent && recent.cnt >= MAX_ATTEMPTS) {
       // Find the most recent failed attempt to calculate remaining time
@@ -208,7 +209,7 @@ class AuthManager {
          ORDER BY attempted_at DESC LIMIT 1`
       ).get(remoteDeviceId);
 
-      const lastTime = new Date(last.attempted_at).getTime();
+      const lastTime = new Date(`${String(last.attempted_at).replace(' ', 'T')}Z`).getTime();
       const unlockTime = lastTime + LOCKOUT_DURATION_MS;
       const remaining = Math.max(0, Math.ceil((unlockTime - Date.now()) / 1000));
 

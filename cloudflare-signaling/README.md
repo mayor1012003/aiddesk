@@ -10,7 +10,7 @@ start or stop. It uses the same protocol as `../signaling-server` (Node), so the
 desktop app works with either one.
 
 Protocol messages: `register` → `registered`, then `offer` / `answer` / `ice-candidate` /
-`disconnect` relayed to `target`. `disconnect` may carry a `reason`: `rejected`, `busy` or
+`disconnect` relayed to `target`. `offer` may carry an `auth` object, the unattended-access password, which is relayed only to the target device. The app also embeds it in the SDP object, so older deployments work too. `disconnect` may carry a `reason`: `rejected`, `busy` or
 `host-error`. The app sends `{"type":"ping"}` every 30 s as a heartbeat. The Worker answers
 `{"type":"pong"}` through `setWebSocketAutoResponse`, so heartbeats don't wake the
 hibernated Durable Object. **Redeploy (`npx wrangler deploy`) to get these.** Older

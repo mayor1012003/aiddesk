@@ -53,6 +53,15 @@ contextBridge.exposeInMainWorld('aiddesk', {
   addToWhitelist: (deviceId, notes) => safeInvoke('auth:addToWhitelist', deviceId, notes),
   removeFromWhitelist: (deviceId) => safeInvoke('auth:removeFromWhitelist', deviceId),
   getWhitelist: () => safeInvoke('auth:getWhitelist'),
+  verifyUnattended: (remoteDeviceId, password, totp) =>
+    safeInvoke('auth:verifyUnattended', remoteDeviceId, password, totp),
+
+  // ─── Background / Tray ───────────────────────────────────────────────
+  getStartAtLogin: () => safeInvoke('app:getStartAtLogin'),
+  setStartAtLogin: (enabled) => safeInvoke('app:setStartAtLogin', enabled),
+  setSignalingStatus: (status) => safeInvoke('app:setSignalingStatus', status),
+  notifyIncomingRequest: (remoteDeviceId) => safeInvoke('app:notifyIncomingRequest', remoteDeviceId),
+  showWindow: () => safeInvoke('app:showWindow'),
 
   // ─── Connection Approval ─────────────────────────────────────────────
   onConnectionRequest: (callback) => {

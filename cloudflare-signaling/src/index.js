@@ -229,7 +229,7 @@ export class SignalingHub {
         if (!target) {
           return this.send(ws, { type: 'error', message: `Device ${msg.target} is not online` });
         }
-        return this.send(target, { type: 'offer', sdp: msg.sdp, from: msg.from, requestId: msg.requestId });
+        return this.send(target, { type: 'offer', sdp: msg.sdp, from: msg.from, requestId: msg.requestId, auth: msg.auth });
       }
 
       case 'answer': {

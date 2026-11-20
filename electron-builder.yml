@@ -2,6 +2,10 @@ appId: com.aiddesk.app
 productName: AidDesk
 copyright: Copyright © 2024 AidDesk Team
 
+# Ad-hoc signs the macOS app when no Developer ID certificate is available, so
+# unsigned Apple-silicon builds still launch (see scripts/after-pack.js).
+afterPack: scripts/after-pack.js
+
 directories:
   output: release
   buildResources: assets
@@ -23,8 +27,7 @@ win:
   target:
     - target: nsis
       arch:
-        - x64
-        - arm64
+        - x64   # arm64 dropped: native modules can't be cross-built reliably on x64 CI runners
   icon: assets/icon.ico
   artifactName: "AidDesk-Setup-${version}-${arch}.${ext}"
 
@@ -40,14 +43,17 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
-        - arm64
+        - arm64   # CI builds each arch on a matching runner (--arm64 / --x64 override this)
   icon: assets/icon.icns
   category: public.app-category.utilities
+  # Hardened runtime only matters for notarized Developer ID builds; it is applied
+  # when a certificate is present (CSC_LINK) and skipped for unsigned CI builds.
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSAppleEventsUsageDescription: AidDesk needs this to control the computer during remote support sessions.
   # afterSign: scripts/notarize.js  # Uncomment for production notarization
 
 dmg:

@@ -10,6 +10,8 @@ import React, { useState } from 'react';
 export default function Dashboard({ deviceId, connectionStatus, signalingStatus, notice, onConnect, onDisconnect }) {
   const [targetId, setTargetId] = useState('');
   const [error, setError] = useState('');
+  const [password, setPassword] = useState('');
+  const [totp, setTotp] = useState('');
 
   const formatInput = (value) => {
     // Strip non-digits, then format as XXX-XXX-XXX
@@ -28,7 +30,8 @@ export default function Dashboard({ deviceId, connectionStatus, signalingStatus,
       return;
     }
     setError('');
-    onConnect?.(formatInput(targetId));
+    // Optional unattended-access password (+ 2FA code): connects without anyone clicking Accept
+    onConnect?.(formatInput(targetId), { password: password || undefined, totp: totp.trim() || undefined });
   };
 
   const handleKeyDown = (e) => {
@@ -85,6 +88,34 @@ export default function Dashboard({ deviceId, connectionStatus, signalingStatus,
               {isConnecting ? '⏳ Connecting…' : '→ Connect'}
             </button>
           )}
+        </div>
+        <div className="connect-form" style={{ marginTop: 10 }}>
+          <input
+            className="connect-input"
+            type="password"
+            placeholder="Unattended password (optional)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isConnected || isConnecting}
+            style={{ fontSize: 14, letterSpacing: 'normal' }}
+            autoComplete="off"
+          />
+          <input
+            className="connect-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="2FA code"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onKeyDown={handleKeyDown}
+            disabled={isConnected || isConnecting}
+            style={{ fontSize: 14, letterSpacing: 'normal', width: 110 }}
+            autoComplete="off"
+          />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+          Leave empty to ask the other person to click Accept.
         </div>
         {(error || notice) && (
           <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 10 }}>
