@@ -1,6 +1,6 @@
 {
   "name": "aiddesk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AidDesk - Cross-platform remote desktop for IT troubleshooting",
   "main": "src/main/index.js",
   "scripts": {

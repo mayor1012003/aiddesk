@@ -52,9 +52,19 @@
    want the person there to click **Accept**. Five wrong attempts lock the caller out for
    60 seconds.
 
-**New release:** bump `version` in `package.json`, then `git tag v1.2.3 && git push origin v1.2.3`.
-GitHub Actions (`.github/workflows/build.yml`) builds the Windows and macOS installers
-and attaches them to the release.
+**Automatic installer builds (one-time setup).** The workflow is stored at `ci/build.yml`. GitHub
+only runs it from `.github/workflows/`, so add it once in the browser:
+1. On GitHub, open the repo → **Add file → Create new file**.
+2. Name it `.github/workflows/build.yml`, paste the contents of
+   [`ci/build.yml`](ci/build.yml), and click **Commit changes** on `main`.
+3. Under **Releases → Draft a new release**, type the tag `v1.0.1` (choose
+   "Create new tag on publish") and publish it. Or from a terminal:
+   `git pull && git tag v1.0.1 && git push origin v1.0.1`.
+   Then watch the **Actions** tab. After about 15 minutes the Windows `.exe` and the
+   macOS `.dmg` files are attached to the release.
+
+**Later releases:** bump `version` in `package.json`, commit, then
+`git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 ## Prerequisites
 
